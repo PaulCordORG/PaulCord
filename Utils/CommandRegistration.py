@@ -35,7 +35,7 @@ class CommandRegistration:
             payload = {
                 "name": command["name"],
                 "description": command["description"],
-                "options": self.build_options(command["options"])  # Obsługujemy subkomendy jako opcje
+                "options": self.build_options(command["options"])
             }
 
             print(f"Registering command: {command['name']}")
