@@ -1,9 +1,9 @@
 import asyncio
 import requests
 
-from PaulCord.CommandRegistration import CommandRegistration
-from PaulCord.WebSocketConnection import WebSocketConnection
-from PaulCord.Decorators import CommandDecorator, ComponentHandlerDecorator
+from PaulCord.Utils.CommandRegistration import CommandRegistration
+from PaulCord.Utils.WebSocketConnection import WebSocketConnection
+from PaulCord.Utils.Decorators import CommandDecorator, ComponentHandlerDecorator
 
 class Client:
     def __init__(self, token, application_id):
@@ -30,30 +30,42 @@ class Client:
     def slash_commands(self, name=None, description=None):
         return self.command_decorator.slash_commands(name, description)
 
-    def component_handler(self, custom_id=None):
-        return self.component_handler_decorator.component_handler(custom_id)
+    def handle_component(self, interaction, custom_id):
+        handler = self.component_handler_decorator.component_handlers.get(custom_id)
+        if handler:
+            handler(self, interaction)
+        else:
+            print(f"No handler found for component with custom_id: {custom_id}")
+            self.send_interaction_response(interaction["id"], interaction["token"], message="No handler for this component.")
 
     def handle_interaction(self, interaction):
         interaction_type = interaction['type']
         custom_id = interaction['data'].get('custom_id', '')
 
-        if interaction_type == 2:   
+        if interaction_type == 2:  # Command Interaction
             command_name = interaction['data']['name']
-            print(f"Command received: {command_name}")
             command = next((cmd for cmd in self.commands if cmd['name'] == command_name), None)
             if command:
                 command['func'](self, interaction)
             else:
                 self.send_interaction_response(interaction["id"], interaction["token"], "Unknown command")
 
-        elif interaction_type == 3:
-            self.handle_component(interaction, custom_id)
+        elif interaction_type == 3:  # Component Interaction
+            print(f"Handling component with custom_id: {custom_id}")
+            handler = self.component_handler_decorator.component_handlers.get(custom_id)
+            if handler:
+                handler(self, interaction)
+            else:
+                print(f"No handler found for component with custom_id: {custom_id}")
+                self.send_interaction_response(interaction["id"], interaction["token"], "No handler for this component.")
 
-        elif interaction_type == 5: 
+        elif interaction_type == 5:  # Modal Interaction
             self.handle_modal(interaction, custom_id)
 
         else:
             self.send_interaction_response(interaction["id"], interaction["token"], "Unknown interaction type")
+
+
 
     def send_interaction_response(self, interaction_id, interaction_token, message=None, embed=None, ephemeral=False, components=None):
         url = f"{self.base_url}/interactions/{interaction_id}/{interaction_token}/callback"
@@ -82,9 +94,24 @@ class Client:
     async def main(self):
         print("Starting command registration and sync.")
         print(f"Commands before registration: {self.commands}")
-        await self.command_registration.register_commands()
-        await self.command_registration.sync_commands()
-        await self.websocket_connection.connect()
+    
+        try:
+            await self.command_registration.register_commands()
+            print("Commands registered.")
+        except Exception as e:
+            print(f"Error during command registration: {e}")
+
+        try:
+            await self.command_registration.sync_commands()
+            print("Commands synchronized.")
+        except Exception as e:
+            print(f"Error during command synchronization: {e}")
+
+        try:
+            await self.websocket_connection.connect()
+            print("WebSocket connection established.")
+        except Exception as e:
+            print(f"Error during WebSocket connection: {e}")
 
 
     def run(self):
