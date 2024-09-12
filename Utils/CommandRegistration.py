@@ -1,139 +1,98 @@
-import requests
 import asyncio
+import json
+import websockets
 
-class SlashCommand:
-    def __init__(self, name, description, options=None):
-        self.name = name
-        self.description = description
-        self.options = options or []
-
-
-class CommandRegistration:
+class WebSocketConnection:
     def __init__(self, client):
         self.client = client
 
-    async def rate_limit_sleep(self, seconds):
-        await asyncio.sleep(seconds)
+    async def heartbeat(self):
+        while self.client.running:
+            if self.client.heartbeat_interval is None:
+                await asyncio.sleep(5)
+                continue
 
-    async def send_request(self, method, url, headers, json=None):
-        response = self.client.session.request(method, url, headers=headers, json=json)
-        print(f"Request: {method} {url}, Status Code: {response.status_code}, Response: {response.text}")
+            if not self.client.last_heartbeat_ack:
+                print("Heartbeat timeout. Reconnecting...")
+                if self.client.ws:
+                    try:
+                        await self.client.ws.close()
+                    except Exception as e:
+                        print(f"Error closing WebSocket connection: {e}")
+                break
 
-        if response.status_code == 429:
-            retry_after = response.json().get('retry_after', 1)
-            print(f"Rate limited. Sleeping for {retry_after} seconds.")
-            await self.rate_limit_sleep(retry_after)
-            response = self.client.session.request(method, url, headers=headers, json=json)
-            print(f"Retry Request: {method} {url}, Status Code: {response.status_code}, Response: {response.text}")
-
-        return response
-    
-    def add_command_with_arguments(self, command_name, description, options):
-        return {
-            "name": command_name,
-            "description": description,
-            "options": options
-        }
-
-    async def register_commands(self):
-        url = f"{self.client.base_url}/applications/{self.client.application_id}/commands"
-        headers = {
-            "Authorization": f"Bot {self.client.token}",
-            "Content-Type": "application/json"
-        }
-
-        if not self.client.commands:
-            print("No commands to register.")
-            return
-
-        for command in self.client.commands:
+            self.client.last_heartbeat_ack = False
             payload = {
-                "name": command["name"],
-                "description": command["description"],
-                "options": self.build_options(command["options"]),
-                "integration_types": [0, 1],
-                "contexts": [0, 1, 2]
+                "op": 1,
+                "d": self.client.sequence if self.client.sequence is not None else 0
             }
+            if self.client.ws:
+                try:
+                    await self.client.ws.send(json.dumps(payload))
+                except Exception as e:
+                    print(f"Error sending heartbeat: {e}")
+                    break
+            print(f"Sending heartbeat with sequence: {self.client.sequence}")
+            await asyncio.sleep(self.client.heartbeat_interval / 1000)
 
-            print(f"Registering command: {command['name']}")
-            response = await self.send_request("POST", url, headers, json=payload)
-            if response.status_code != 201:
-                print(f"Failed to register command '{command['name']}': {response.status_code} {response.text}")
-            else:
-                print(f"Command '{command['name']}' registered successfully")
+    async def connect(self):
+        while self.client.running:
+            try:
+                async with websockets.connect(self.client.gateway_url) as ws:
+                    self.client.ws = ws
+                    await self.identify()
+                    asyncio.create_task(self.heartbeat())
 
+                    async for message in ws:
+                        payload = json.loads(message)
+                        op_code = payload.get('op')
+                        event = payload.get('t', 'UNKNOWN')
 
-    def build_command_payload(self, command):
+                        if op_code == 10:
+                            self.client.heartbeat_interval = payload['d']['heartbeat_interval']
+                            print(f"Received HELLO, heartbeat_interval set to: {self.client.heartbeat_interval}")
+
+                        elif op_code == 11:
+                            self.client.last_heartbeat_ack = True
+                            print("Heartbeat acknowledged")
+
+                        elif op_code == 0:
+                            self.client.sequence = payload['s']
+                            if event == 'READY':
+                                print("Bot connected to Discord Gateway")
+                                self.client.session_id = payload['d']['session_id']
+                                self.client.user_id = payload['d']['user']['id']
+                            elif event == 'RESUMED':
+                                print("Connection to the Discord Gateway has resumed.")
+                            elif event == 'INTERACTION_CREATE':
+                                interaction = payload['d']
+                                await self.client.handle_interaction(interaction)
+                            else:
+                                print(f"Unhandled event: {event}")
+
+                        else:
+                            print(f"Unhandled opcode: {op_code}")
+
+            except Exception as e:
+                print(f"Error during WebSocket connection: {e}")
+                await asyncio.sleep(5)
+
+    async def identify(self):
         payload = {
-            "name": command["name"],
-            "description": command["description"],
-            "options": []
-        }
-
-        if "options" in command:
-            for option in command["options"]:
-                option_payload = {
-                    "type": option["type"],
-                    "name": option["name"],
-                    "description": option["description"]
+            "op": 2,
+            "d": {
+                "token": self.client.token,
+                "intents": 8,
+                "properties": {
+                    "$os": "linux",
+                    "$browser": "PaulCLIClient",
+                    "$device": "PaulCLIClient"
                 }
-
-                if "options" in option:
-                    option_payload["options"] = option["options"]
-
-                payload["options"].append(option_payload)
-
-        return payload
-
-    def build_options(self, options):
-        discord_options = []
-        for option in options:
-            discord_option = {
-                "type": option["type"],
-                "name": option["name"],
-                "description": option["description"],
-                "required": option.get("required", False)
             }
-            discord_options.append(discord_option)
-        return discord_options
-    
-    async def sync_commands(self):
-        url = f"{self.client.base_url}/applications/{self.client.application_id}/commands"
-        headers = {
-            "Authorization": f"Bot {self.client.token}",
-            "Content-Type": "application/json"
         }
-
-        response = await self.send_request("GET", url, headers)
-        if response.status_code == 200:
-            existing_commands = response.json()
-        else:
-            print("Failed to retrieve existing commands.")
-            existing_commands = []
-
-        existing_commands_dict = {cmd['name']: cmd for cmd in existing_commands}
-
-        for command in self.client.commands:
-            command_payload = {
-                "name": command["name"],
-                "description": command["description"],
-                "options": self.build_options(command["options"]),
-                "integration_types": [0, 1],
-                "contexts": [0, 1, 2]
-            }
-
-            if command["name"] in existing_commands_dict:
-                existing_command = existing_commands_dict[command["name"]]
-                if existing_command["description"] == command["description"] and \
-                   existing_command.get("options", []) == self.build_options(command["options"]):
-                    continue
-
-            print(f"Updated commands: {command['name']}")
-            response = await self.send_request("POST", url, headers, json=command_payload)
-            if response.status_code != 201:
-                print(f"Failed to register command '{command['name']}': {response.status_code} {response.text}")
-            else:
-                print(f"'{command['name']}' registered!")
-
-        
-        await self.register_commands()
+        print("Sending identify payload")
+        if self.client.ws:
+            try:
+                await self.client.ws.send(json.dumps(payload))
+            except Exception as e:
+                print(f"Error sending identify payload: {e}")
