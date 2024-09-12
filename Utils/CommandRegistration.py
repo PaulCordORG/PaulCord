@@ -35,7 +35,9 @@ class CommandRegistration:
             payload = {
                 "name": command["name"],
                 "description": command["description"],
-                "options": self.build_options(command["options"])
+                "options": self.build_options(command["options"]),
+                "integration_types": [0, 1],
+                "contexts": [0, 1, 2]
             }
 
             print(f"Registering command: {command['name']}")
@@ -44,7 +46,6 @@ class CommandRegistration:
                 print(f"Failed to register command '{command['name']}': {response.status_code} {response.text}")
             else:
                 print(f"Command '{command['name']}' registered successfully")
-
 
     def build_command_payload(self, command):
         payload = {
@@ -80,7 +81,7 @@ class CommandRegistration:
                 discord_option["options"] = self.build_options(option["options"])
             discord_options.append(discord_option)
         return discord_options
-
+    
     async def sync_commands(self):
         url = f"{self.client.base_url}/applications/{self.client.application_id}/commands"
         headers = {
@@ -90,12 +91,34 @@ class CommandRegistration:
 
         response = await self.send_request("GET", url, headers)
         if response.status_code == 200:
-            commands = response.json()
-            for cmd in commands:
-                cmd_id = cmd['id']
-                delete_url = f"{url}/{cmd_id}"
-                delete_response = await self.send_request("DELETE", delete_url, headers)
-                if delete_response.status_code != 204:
-                    print(f"Failed to delete command '{cmd_id}': {delete_response.status_code} {delete_response.text}")
+            existing_commands = response.json()
+        else:
+            print("Failed to retrieve existing commands.")
+            existing_commands = []
 
+        existing_commands_dict = {cmd['name']: cmd for cmd in existing_commands}
+
+        for command in self.client.commands:
+            command_payload = {
+                "name": command["name"],
+                "description": command["description"],
+                "options": self.build_options(command["options"]),
+                "integration_types": [0, 1],
+                "contexts": [0, 1, 2]
+            }
+
+            if command["name"] in existing_commands_dict:
+                existing_command = existing_commands_dict[command["name"]]
+                if existing_command["description"] == command["description"] and \
+                   existing_command.get("options", []) == self.build_options(command["options"]):
+                    continue
+
+            print(f"Updated commands: {command['name']}")
+            response = await self.send_request("POST", url, headers, json=command_payload)
+            if response.status_code != 201:
+                print(f"Failed to register command '{command['name']}': {response.status_code} {response.text}")
+            else:
+                print(f"'{command['name']}' registered!")
+
+        
         await self.register_commands()
