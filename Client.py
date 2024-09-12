@@ -38,32 +38,32 @@ class Client:
             print(f"No handler found for component with custom_id: {custom_id}")
             self.send_interaction_response(interaction["id"], interaction["token"], message="No handler for this component.")
 
-    def handle_interaction(self, interaction):
+    async def handle_interaction(self, interaction):
         interaction_type = interaction['type']
         custom_id = interaction['data'].get('custom_id', '')
 
-        if interaction_type == 2:  # Command Interaction
+        if interaction_type == 2: 
             command_name = interaction['data']['name']
             command = next((cmd for cmd in self.commands if cmd['name'] == command_name), None)
             if command:
-                command['func'](self, interaction)
+                await command['func'](self, interaction)
             else:
-                self.send_interaction_response(interaction["id"], interaction["token"], "Unknown command")
+                await self.send_interaction_response(interaction["id"], interaction["token"], "Unknown command")
 
-        elif interaction_type == 3:  # Component Interaction
+        elif interaction_type == 3:
             print(f"Handling component with custom_id: {custom_id}")
             handler = self.component_handler_decorator.component_handlers.get(custom_id)
             if handler:
-                handler(self, interaction)
+                await handler(self, interaction)
             else:
                 print(f"No handler found for component with custom_id: {custom_id}")
-                self.send_interaction_response(interaction["id"], interaction["token"], "No handler for this component.")
+                await self.send_interaction_response(interaction["id"], interaction["token"], "No handler for this component.")
 
-        elif interaction_type == 5:  # Modal Interaction
-            self.handle_modal(interaction, custom_id)
+        elif interaction_type == 5:
+            await self.handle_modal(interaction, custom_id)
 
         else:
-            self.send_interaction_response(interaction["id"], interaction["token"], "Unknown interaction type")
+            await self.send_interaction_response(interaction["id"], interaction["token"], "Unknown interaction type")
 
 
 
@@ -90,6 +90,7 @@ class Client:
             print(f"Failed to send interaction response: {response.status_code} {response.text}")
         else:
             print("Interaction response sent successfully")
+
 
     async def main(self):
         print("Starting command registration and sync.")
