@@ -1,3 +1,3 @@
 # PaulCord
 
-An early vase of the library for the PaulCLI bot. The library may contain scripting errors. I do not recommend testing it on public discord servers.
+![](https://github.com/user-attachments/assets/55d6361c-0b79-4f87-a80a-ce906a9ee1e3)
