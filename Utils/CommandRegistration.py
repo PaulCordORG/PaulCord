@@ -1,6 +1,13 @@
 import requests
 import asyncio
 
+class SlashCommand:
+    def __init__(self, name, description, options=None):
+        self.name = name
+        self.description = description
+        self.options = options or []
+
+
 class CommandRegistration:
     def __init__(self, client):
         self.client = client
@@ -20,6 +27,13 @@ class CommandRegistration:
             print(f"Retry Request: {method} {url}, Status Code: {response.status_code}, Response: {response.text}")
 
         return response
+    
+    def add_command_with_arguments(self, command_name, description, options):
+        return {
+            "name": command_name,
+            "description": description,
+            "options": options
+        }
 
     async def register_commands(self):
         url = f"{self.client.base_url}/applications/{self.client.application_id}/commands"
@@ -30,7 +44,8 @@ class CommandRegistration:
 
         if not self.client.commands:
             print("No commands to register.")
-    
+            return
+
         for command in self.client.commands:
             payload = {
                 "name": command["name"],
@@ -46,6 +61,7 @@ class CommandRegistration:
                 print(f"Failed to register command '{command['name']}': {response.status_code} {response.text}")
             else:
                 print(f"Command '{command['name']}' registered successfully")
+
 
     def build_command_payload(self, command):
         payload = {
@@ -73,12 +89,11 @@ class CommandRegistration:
         discord_options = []
         for option in options:
             discord_option = {
-                "type": 1,
+                "type": option["type"],
                 "name": option["name"],
-                "description": option["description"]
+                "description": option["description"],
+                "required": option.get("required", False)
             }
-            if "options" in option:
-                discord_option["options"] = self.build_options(option["options"])
             discord_options.append(discord_option)
         return discord_options
     
