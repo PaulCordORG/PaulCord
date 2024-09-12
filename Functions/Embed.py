@@ -1,12 +1,13 @@
 class Embed:
-    def __init__(self, title=None, description=None, color=None, fields=None, footer=None, thumbnail=None):
+    def __init__(self, title=None, description=None, color=None, fields=None, footer=None, thumbnail=None, image=None):
         self.embed = {
             "title": title,
             "description": description,
             "color": color,
             "fields": fields or [],
             "footer": footer or {},
-            "thumbnail": thumbnail or {}
+            "thumbnail": thumbnail or {},
+            "image": image or {}
         }
 
     def add_field(self, name, value, inline=False):
@@ -18,6 +19,9 @@ class Embed:
 
     def set_thumbnail(self, url):
         self.embed["thumbnail"] = {"url": url}
+
+    def set_image(self, url):
+        self.embed["image"] = {"url": url}
 
     def to_dict(self):
         return self.embed
