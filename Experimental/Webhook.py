@@ -61,7 +61,7 @@ class WebhookManager:
             return False
 
     def send_webhook_message(self, webhook_id, webhook_token, content, embeds=None, username=None, avatar_url=None):
-        url = f"https://discord.com/api/webhooks/{webhook_id}/{webhook_token}"
+        url = f"{self.client.base_url}/webhooks/{webhook_id}/{webhook_token}"
         data = {
             "content": content,
             "embeds": embeds or [],
