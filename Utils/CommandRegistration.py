@@ -1,13 +1,6 @@
 import requests
 import asyncio
 
-class SlashCommand:
-    def __init__(self, name, description, options=None):
-        self.name = name
-        self.description = description
-        self.options = options or []
-
-
 class CommandRegistration:
     def __init__(self, client):
         self.client = client
@@ -27,13 +20,6 @@ class CommandRegistration:
             print(f"Retry Request: {method} {url}, Status Code: {response.status_code}, Response: {response.text}")
 
         return response
-    
-    def add_command_with_arguments(self, command_name, description, options):
-        return {
-            "name": command_name,
-            "description": description,
-            "options": options
-        }
 
     async def register_commands(self):
         url = f"{self.client.base_url}/applications/{self.client.application_id}/commands"
@@ -47,56 +33,15 @@ class CommandRegistration:
             return
 
         for command in self.client.commands:
-            payload = {
-                "name": command["name"],
-                "description": command["description"],
-                "options": self.build_options(command["options"]),
-                "integration_types": [0, 1],
-                "contexts": [0, 1, 2]
-            }
-
+            payload = self.build_command_payload(command)
             print(f"Registering command: {command['name']}")
+            
             response = await self.send_request("POST", url, headers, json=payload)
-            if response.status_code != 201:
-                print(f"Failed to register command '{command['name']}': {response.status_code} {response.text}")
-            else:
+            if response.status_code in [200, 201]:
                 print(f"Command '{command['name']}' registered successfully")
+            else:
+                print(f"Failed to register command '{command['name']}': {response.status_code} {response.text}")
 
-
-    def build_command_payload(self, command):
-        payload = {
-            "name": command["name"],
-            "description": command["description"],
-            "options": []
-        }
-
-        if "options" in command:
-            for option in command["options"]:
-                option_payload = {
-                    "type": option["type"],
-                    "name": option["name"],
-                    "description": option["description"]
-                }
-
-                if "options" in option:
-                    option_payload["options"] = option["options"]
-
-                payload["options"].append(option_payload)
-
-        return payload
-
-    def build_options(self, options):
-        discord_options = []
-        for option in options:
-            discord_option = {
-                "type": option["type"],
-                "name": option["name"],
-                "description": option["description"],
-                "required": option.get("required", False)
-            }
-            discord_options.append(discord_option)
-        return discord_options
-    
     async def sync_commands(self):
         url = f"{self.client.base_url}/applications/{self.client.application_id}/commands"
         headers = {
@@ -109,31 +54,43 @@ class CommandRegistration:
             existing_commands = response.json()
         else:
             print("Failed to retrieve existing commands.")
-            existing_commands = []
+            return
 
         existing_commands_dict = {cmd['name']: cmd for cmd in existing_commands}
 
         for command in self.client.commands:
-            command_payload = {
-                "name": command["name"],
-                "description": command["description"],
-                "options": self.build_options(command["options"]),
-                "integration_types": [0, 1],
-                "contexts": [0, 1, 2]
-            }
+            command_payload = self.build_command_payload(command)
 
             if command["name"] in existing_commands_dict:
                 existing_command = existing_commands_dict[command["name"]]
                 if existing_command["description"] == command["description"] and \
-                   existing_command.get("options", []) == self.build_options(command["options"]):
-                    continue
+                   existing_command.get("options", []) == command_payload["options"]:
+                    continue 
 
-            print(f"Updated commands: {command['name']}")
+            print(f"Updating or registering command: {command['name']}")
             response = await self.send_request("POST", url, headers, json=command_payload)
-            if response.status_code != 201:
-                print(f"Failed to register command '{command['name']}': {response.status_code} {response.text}")
+            if response.status_code in [200, 201]:
+                print(f"Command '{command['name']}' updated or registered successfully")
             else:
-                print(f"'{command['name']}' registered!")
+                print(f"Failed to update or register command '{command['name']}': {response.status_code} {response.text}")
 
-        
-        await self.register_commands()
+    def build_command_payload(self, command):
+        payload = {
+            "name": command["name"],
+            "description": command["description"],
+            "options": self.build_options(command["options"]) if "options" in command else []
+        }
+        return payload
+
+    def build_options(self, options):
+        discord_options = []
+        for option in options:
+            discord_option = {
+                "type": option.get("type", 1),
+                "name": option["name"],
+                "description": option["description"]
+            }
+            if "options" in option:
+                discord_option["options"] = self.build_options(option["options"])
+            discord_options.append(discord_option)
+        return discord_options
