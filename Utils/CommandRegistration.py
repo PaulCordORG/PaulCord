@@ -51,16 +51,19 @@ class CommandRegistration:
                 "name": command["name"],
                 "description": command["description"],
                 "options": self.build_options(command["options"]),
-                "integration_types": [0, 1],
                 "contexts": [0, 1, 2]
             }
 
-            print(f"Registering command: {command['name']}")
+            if command.get("integration_types", False):
+                payload["integration_types"] = [0, 1]
+
             response = await self.send_request("POST", url, headers, json=payload)
             if response.status_code != 201:
                 print(f"Failed to register command '{command['name']}': {response.status_code} {response.text}")
             else:
                 print(f"Command '{command['name']}' registered successfully")
+
+
 
 
     def build_command_payload(self, command):
