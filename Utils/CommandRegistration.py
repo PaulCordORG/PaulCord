@@ -27,13 +27,6 @@ class CommandRegistration:
             print(f"Retry Request: {method} {url}, Status Code: {response.status_code}, Response: {response.text}")
 
         return response
-    
-    def add_command_with_arguments(self, command_name, description, options):
-        return {
-            "name": command_name,
-            "description": description,
-            "options": options
-        }
 
     async def register_commands(self):
         url = f"{self.client.base_url}/applications/{self.client.application_id}/commands"
