@@ -4,9 +4,10 @@ import requests
 from PaulCord.Utils.CommandRegistration import CommandRegistration
 from PaulCord.Utils.WebSocketConnection import WebSocketConnection
 from PaulCord.Utils.Decorators import CommandDecorator, ComponentHandlerDecorator
+from PaulCord.Utils.Intents import Intents
 
 class Client:
-    def __init__(self, token, application_id):
+    def __init__(self, token, application_id, intents=Intents.default):
         self.token = token
         self.application_id = application_id
         self.base_url = "https://discord.com/api/v10"
@@ -21,11 +22,17 @@ class Client:
         self.last_heartbeat_ack = True
         self.session_id = None
         self.reconnect_attempts = 0
+        self.intents = intents
+        self.events = {}
 
         self.command_registration = CommandRegistration(self)
         self.websocket_connection = WebSocketConnection(self)
         self.command_decorator = CommandDecorator(self)
         self.component_handler_decorator = ComponentHandlerDecorator(self)
+
+    def event(self, func):  
+        self.events[func.__name__] = func
+        return func
 
     def slash_commands(self, name=None, description=None):
         return self.command_decorator.slash_commands(name, description)
@@ -64,6 +71,12 @@ class Client:
 
         else:
             await self.send_interaction_response(interaction["id"], interaction["token"], "Unknown interaction type")
+
+    async def dispatch_event(self, event_name, *args, **kwargs):
+        if event_name in self.events:
+            await self.events[event_name](*args, **kwargs)
+        else:
+            print(f"No handler for event: {event_name}")
 
 
 
