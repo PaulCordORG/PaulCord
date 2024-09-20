@@ -1,20 +1,27 @@
+from PaulCord.Utils.CommandRegistration import SlashCommand
+
 class CommandDecorator:
     def __init__(self, client):
         self.client = client
         self.commands = []
 
-    def slash_commands(self, name=None, description=None):
+    def slash_commands(self, name=None, description=None, options=None, integration_types=False):
         def wrapper(func):
             if not description:
                 raise ValueError(f"Description is required for command '{name}'")
 
-            cmd = {
-                "name": name or func.__name__,
-                "description": description or func.__doc__,
+            cmd = SlashCommand(
+                name=name or func.__name__,
+                description=description or func.__doc__,
+                options=options or []
+            )
+            self.client.commands.append({
+                "name": cmd.name,
+                "description": cmd.description,
                 "func": func,
-                "options": []
-            }
-            self.client.commands.append(cmd)
+                "options": cmd.options,
+                "integration_types": integration_types
+            })
             return func
         return wrapper
 
@@ -47,7 +54,6 @@ class CommandDecorator:
             if not parent_command:
                 raise ValueError(f"No parent command with name '{parent_name}' found")
 
-            # Ensure the parent command has an 'options' list
             if "options" not in parent_command:
                 parent_command["options"] = []
 
@@ -55,10 +61,10 @@ class CommandDecorator:
                 raise ValueError(f"Description is required for subcommand group '{group_name}'")
 
             sub_command_group = {
-                "type": 2,  # Type 2 means a subcommand group
+                "type": 2,
                 "name": group_name,
                 "description": description,
-                "options": []  # Subcommands will be added here
+                "options": [] 
             }
 
             parent_command["options"].append(sub_command_group)
