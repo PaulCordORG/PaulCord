@@ -8,6 +8,9 @@ class WebSocketConnection:
         self.client = client
         self.last_ping = None
         self.ping_timestamp = None
+        self.reconnect_attempts = 0
+        self.max_reconnect_attempts = 5
+        self.reconnect_interval = 5
 
     async def heartbeat(self):
         while self.client.running:
@@ -40,10 +43,11 @@ class WebSocketConnection:
             await asyncio.sleep(self.client.heartbeat_interval / 1000)
 
     async def connect(self):
-        while self.client.running:
+        while self.client.running and self.reconnect_attempts < self.max_reconnect_attempts:
             try:
                 async with websockets.connect(self.client.gateway_url) as ws:
                     self.client.ws = ws
+                    self.reconnect_attempts = 0
                     await self.identify()
                     asyncio.create_task(self.heartbeat())
 
@@ -93,10 +97,17 @@ class WebSocketConnection:
                             else:
                                 print("Received event with no name:", payload)
 
-
+            except (websockets.exceptions.ConnectionClosed, websockets.exceptions.InvalidStatusCode) as e:
+                self.reconnect_attempts += 1
+                print(f"WebSocket connection error: {e}. Attempting reconnect ({self.reconnect_attempts}/{self.max_reconnect_attempts})")
+                await asyncio.sleep(self.reconnect_interval * self.reconnect_attempts)
             except Exception as e:
                 print(f"Error during WebSocket connection: {e}")
                 await asyncio.sleep(5)
+
+        if self.reconnect_attempts >= self.max_reconnect_attempts:
+            print("Max reconnect attempts reached. Stopping bot.")
+            self.client.running = False
 
     async def identify(self):
         payload = {
