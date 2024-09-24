@@ -1,10 +1,12 @@
 import asyncio
 import requests
+import json
+import time
 
-from PaulCord.Utils.CommandRegistration import CommandRegistration
-from PaulCord.Utils.WebSocketConnection import WebSocketConnection
-from PaulCord.Utils.Decorators import CommandDecorator, ComponentHandlerDecorator
-from PaulCord.Utils.Intents import Intents
+from PaulCord.Core.CommandRegistration import CommandRegistration
+from PaulCord.Core.WebSocketConnection import WebSocketConnection
+from PaulCord.Core.Decorators import CommandDecorator, ComponentHandlerDecorator
+from PaulCord.Core.Intents import Intents
 
 class Client:
     def __init__(self, token, application_id, intents=Intents.default):
@@ -53,7 +55,13 @@ class Client:
             command_name = interaction['data']['name']
             command = next((cmd for cmd in self.commands if cmd['name'] == command_name), None)
             if command:
+                start_time = time.time()
                 await command['func'](self, interaction)
+                end_time = time.time()
+
+                execution_time = (end_time - start_time) * 1000
+
+                print(f"Command '{command_name}' executed in {execution_time:.2f} ms")
             else:
                 await self.send_interaction_response(interaction["id"], interaction["token"], "Unknown command")
 
@@ -97,7 +105,8 @@ class Client:
     
         if components:
             json_data["data"]["components"] = components
-    
+
+        
         response = self.session.post(url, json=json_data)
         if response.status_code != 200:
             print(f"Failed to send interaction response: {response.status_code} {response.text}")
